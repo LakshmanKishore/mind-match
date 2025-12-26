@@ -1,85 +1,169 @@
 import "./styles.css"
-
 import { PlayerId } from "rune-sdk"
+import { GameState, Equation } from "./logic.ts"
 
-import selectSoundAudio from "./assets/select.wav"
-import { Cells } from "./logic.ts"
+// Initialize DOM Structure
+const root = document.querySelector("main") || document.body
+root.innerHTML = `
+  <div id="game-container">
+    <header id="header">
+      <div id="dice-display">?</div>
+      <div id="status-text">Waiting...</div>
+    </header>
 
-const board = document.getElementById("board")!
-const playersSection = document.getElementById("playersSection")!
+    <div id="board-area"></div>
 
-const selectSound = new Audio(selectSoundAudio)
+    <footer id="footer">
+      <div id="players-row"></div>
+      <div id="controls-row">
+        <button id="passBtn" class="action-btn secondary">Pass</button>
+        <button id="rollBtn" class="action-btn primary">Roll Dice</button>
+      </div>
+    </footer>
+  </div>
+`
 
-let cellButtons: HTMLButtonElement[], playerContainers: HTMLLIElement[]
+// Elements
+const diceEl = document.getElementById("dice-display")!
+const statusEl = document.getElementById("status-text")!
+const boardEl = document.getElementById("board-area")!
+const playersEl = document.getElementById("players-row")!
+const passBtn = document.getElementById("passBtn")!
+const rollBtn = document.getElementById("rollBtn")!
 
-function initUI(
-  cells: Cells,
-  playerIds: PlayerId[],
-  yourPlayerId: PlayerId | undefined
-) {
-  cellButtons = cells.map((_, cellIndex) => {
-    const button = document.createElement("button")
-    button.addEventListener("click", () => Rune.actions.claimCell(cellIndex))
-    board.appendChild(button)
+// State for animations
+let lastDiceVal: number | null = null
 
-    return button
-  })
+function getPlayerName(playerId: PlayerId) {
+  const p = Rune.getPlayerInfo(playerId)
+  return p.displayName || "Player"
+}
 
-  playerContainers = playerIds.map((playerId, index) => {
-    const player = Rune.getPlayerInfo(playerId)
+// ---------------- RENDERERS ----------------
 
-    const li = document.createElement("li")
-    li.setAttribute("player", index.toString())
-    li.innerHTML = `<img src="${player.avatarUrl}" />
-           <span>${
-             player.displayName +
-             (player.playerId === yourPlayerId ? `<br>${Rune.t("(You)")}` : "")
-           }</span>`
-    playersSection.appendChild(li)
+function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
+  const currentVal = game.diceValue
+  const currentPlayer = game.playerIds[game.currentPlayerIndex]
+  const isMyTurn = currentPlayer === yourPlayerId
+  const phase = game.phase
 
-    return li
+  // Dice Visual
+  if (currentVal !== null) {
+    diceEl.textContent = currentVal.toString()
+    diceEl.classList.add("active")
+  } else {
+    diceEl.textContent = "?"
+    diceEl.classList.remove("active")
+  }
+  
+  // Dice Animation
+  if (currentVal !== lastDiceVal && currentVal !== null) {
+    diceEl.classList.remove("pop")
+    void diceEl.offsetWidth
+    diceEl.classList.add("pop")
+  }
+  lastDiceVal = currentVal
+
+  // Status Text
+  if (phase === 'rolling') {
+    statusEl.textContent = isMyTurn ? "Tap Roll to start your turn" : `${getPlayerName(currentPlayer)} is rolling...`
+  } else {
+    statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal}` : `${getPlayerName(currentPlayer)} is choosing...`
+  }
+}
+
+function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
+  const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
+  const isClaiming = game.phase === 'claiming'
+  
+  boardEl.innerHTML = ''
+  
+  game.equations.forEach(eq => {
+    const card = document.createElement("div")
+    card.className = "equation-card"
+    
+    // Content
+    card.innerHTML = `<span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>`
+    
+    // Interaction
+    // User requested NO auto-highlighting of correct answers.
+    // User must be able to click ANY equation if it's their claiming turn.
+    if (isMyTurn && isClaiming) {
+      card.classList.add("interactive")
+      card.onclick = () => {
+        Rune.actions.claimEquation(eq.id)
+      }
+    } else {
+      card.classList.add("disabled")
+    }
+
+    boardEl.appendChild(card)
   })
 }
 
-Rune.initClient({
-  onChange: ({ game, yourPlayerId, action }) => {
-    const { cells, playerIds, winCombo, lastMovePlayerId, freeCells } = game
+function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
+  playersEl.innerHTML = ''
+  
+  game.playerIds.forEach(pid => {
+    const isTurn = game.playerIds[game.currentPlayerIndex] === pid
+    const pState = game.players[pid]
+    const info = Rune.getPlayerInfo(pid)
+    
+    const seat = document.createElement("div")
+    seat.className = `player-seat ${isTurn ? 'turn-active' : ''}`
+    
+    // Status Icon (Check/X) based on last action?
+    // User asked for "icon should be placed beside..." maybe implies feedback.
+    let statusBadge = ''
+    if (pState.lastAction === 'hit') statusBadge = '<span class="badge hit">✓</span>'
+    else if (pState.lastAction === 'miss') statusBadge = '<span class="badge miss">✗</span>'
+    else if (pState.lastAction === 'pass') statusBadge = '<span class="badge pass">−</span>'
+    
+    seat.innerHTML = `
+      <div class="avatar-wrapper">
+        <img src="${info.avatarUrl}" />
+        ${statusBadge}
+      </div>
+      <div class="p-score">${pState.score}</div>
+      <!-- <div class="p-name">${info.displayName}</div> --> 
+    `
+    // Name hidden for space, or minimal? keeping score big.
+    
+    playersEl.appendChild(seat)
+  })
+}
 
-    if (!cellButtons) initUI(cells, playerIds, yourPlayerId)
+function renderControls(game: GameState, yourPlayerId: PlayerId | undefined) {
+  const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
+  const phase = game.phase
 
-    if (lastMovePlayerId) board.classList.remove("initial")
+  // Default hidden
+  rollBtn.style.display = 'none'
+  passBtn.style.display = 'none'
 
-    // Set localized "tap to play" text
-    if (!lastMovePlayerId && cellButtons) {
-      cellButtons[4].setAttribute("data-text", Rune.t("tap to play"))
+  if (isMyTurn) {
+    if (phase === 'rolling') {
+      rollBtn.style.display = 'block'
+      rollBtn.textContent = "Roll Dice"
+    } else if (phase === 'claiming') {
+      passBtn.style.display = 'block'
+      // Maybe also a "Roll" button that is disabled? Or just replace it.
+      // User asked for "pass button and roll dice button should be present".
+      // Usually swapping is better UX for space.
     }
+  }
+}
 
-    cellButtons.forEach((button, i) => {
-      const cellValue = cells[i]
+// ---------------- INIT ----------------
 
-      button.setAttribute(
-        "player",
-        (cellValue !== null ? playerIds.indexOf(cellValue) : -1).toString()
-      )
-      button.setAttribute(
-        "dim",
-        String((winCombo && !winCombo.includes(i)) || (!freeCells && !winCombo))
-      )
+rollBtn.addEventListener("click", () => Rune.actions.rollDice())
+passBtn.addEventListener("click", () => Rune.actions.pass())
 
-      if (cells[i] || lastMovePlayerId === yourPlayerId || winCombo) {
-        button.setAttribute("disabled", "")
-      } else {
-        button.removeAttribute("disabled")
-      }
-    })
-
-    playerContainers.forEach((container, i) => {
-      container.setAttribute(
-        "your-turn",
-        String(playerIds[i] !== lastMovePlayerId && !winCombo && freeCells)
-      )
-    })
-
-    if (action && action.name === "claimCell") selectSound.play()
+Rune.initClient({
+  onChange: ({ game, yourPlayerId }) => {
+    renderHeader(game, yourPlayerId)
+    renderBoard(game, yourPlayerId)
+    renderPlayers(game, yourPlayerId)
+    renderControls(game, yourPlayerId)
   },
 })
