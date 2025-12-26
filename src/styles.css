@@ -101,6 +101,7 @@ body, html {
   color: var(--text-dark);
   transition: all 0.15s ease;
   border: 2px solid transparent;
+  position: relative; /* For avatar positioning */
 }
 
 .equation-card.interactive:active {
@@ -112,8 +113,27 @@ body, html {
   cursor: pointer;
 }
 
-.equation-card.disabled {
-  opacity: 0.7;
+
+
+.equation-card.claimed-by-me {
+  opacity: 0.5; /* Make it dull */
+  color: var(--text-light); /* Dull text color */
+  cursor: default;
+}
+
+.equation-card.claimed-by-other {
+  /* No dullness, but still not clickable outside of turn */
+  cursor: default; /* Visually indicate it's not directly interactive for claiming */
+}
+
+.claimed-by-avatar {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--bg-card); /* Border to stand out on card */
 }
 
 /* --- Footer --- */
@@ -186,6 +206,7 @@ body, html {
   align-items: center;
   justify-content: center;
   border: 2px solid white;
+  z-index: 1; /* Ensure badge is above avatar image */
 }
 
 .badge.hit { background: var(--accent-success); }

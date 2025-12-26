@@ -59,16 +59,17 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
   // Dice Animation
   if (currentVal !== lastDiceVal && currentVal !== null) {
     diceEl.classList.remove("pop")
-    void diceEl.offsetWidth
+    void diceEl.offsetWidth // Trigger reflow
     diceEl.classList.add("pop")
   }
   lastDiceVal = currentVal
 
   // Status Text
+  // No simplified game over message here, Rune handles the full screen
   if (phase === 'rolling') {
     statusEl.textContent = isMyTurn ? "Tap Roll to start your turn" : `${getPlayerName(currentPlayer)} is rolling...`
-  } else {
-    statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal}` : `${getPlayerName(currentPlayer)} is choosing...`
+  } else { // claiming phase
+    statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal} or Pass` : `${getPlayerName(currentPlayer)} is choosing...`
   }
 }
 
@@ -82,21 +83,33 @@ function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
     const card = document.createElement("div")
     card.className = "equation-card"
     
-    // Content
-    card.innerHTML = `<span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>`
-    
-    // Interaction
-    // User requested NO auto-highlighting of correct answers.
-    // User must be able to click ANY equation if it's their claiming turn.
+    let cardContent = `<span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>`
+
+    // Always display avatar if lastClaimedBy is set
+    if (eq.lastClaimedBy !== null) {
+      const playerInfo = Rune.getPlayerInfo(eq.lastClaimedBy)
+      cardContent += `<img src="${playerInfo.avatarUrl}" class="claimed-by-avatar" alt="${playerInfo.displayName}"/>`
+      
+      // Make it dull ONLY if *this* player (yourPlayerId) is the one who last claimed it
+      if (eq.lastClaimedBy === yourPlayerId) {
+        card.classList.add("claimed-by-me") // New class for player's own claimed equations
+      } else {
+        card.classList.add("claimed-by-other") // New class for other players' claimed equations
+      }
+    }
+
+    // Equations are always interactive if it's your turn and claiming phase, regardless of who (if anyone) claimed it last.
     if (isMyTurn && isClaiming) {
       card.classList.add("interactive")
       card.onclick = () => {
         Rune.actions.claimEquation(eq.id)
       }
     } else {
-      card.classList.add("disabled")
+      // If not my turn or not claiming phase, it's not interactive
+      // No explicit 'disabled' class needed for visual dullness if unclaimed
     }
 
+    card.innerHTML = cardContent
     boardEl.appendChild(card)
   })
 }
@@ -112,8 +125,6 @@ function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
     const seat = document.createElement("div")
     seat.className = `player-seat ${isTurn ? 'turn-active' : ''}`
     
-    // Status Icon (Check/X) based on last action?
-    // User asked for "icon should be placed beside..." maybe implies feedback.
     let statusBadge = ''
     if (pState.lastAction === 'hit') statusBadge = '<span class="badge hit">✓</span>'
     else if (pState.lastAction === 'miss') statusBadge = '<span class="badge miss">✗</span>'
@@ -125,9 +136,7 @@ function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
         ${statusBadge}
       </div>
       <div class="p-score">${pState.score}</div>
-      <!-- <div class="p-name">${info.displayName}</div> --> 
     `
-    // Name hidden for space, or minimal? keeping score big.
     
     playersEl.appendChild(seat)
   })
@@ -137,19 +146,14 @@ function renderControls(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
   const phase = game.phase
 
-  // Default hidden
   rollBtn.style.display = 'none'
   passBtn.style.display = 'none'
 
-  if (isMyTurn) {
+  if (isMyTurn && !game.winner) {
     if (phase === 'rolling') {
       rollBtn.style.display = 'block'
-      rollBtn.textContent = "Roll Dice"
     } else if (phase === 'claiming') {
       passBtn.style.display = 'block'
-      // Maybe also a "Roll" button that is disabled? Or just replace it.
-      // User asked for "pass button and roll dice button should be present".
-      // Usually swapping is better UX for space.
     }
   }
 }

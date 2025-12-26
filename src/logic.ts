@@ -8,7 +8,7 @@ export interface Equation {
   val2: number
   operator: Operator
   result: number
-  claimedBy: PlayerId | null // New: Who claimed this equation
+  lastClaimedBy: PlayerId | null // Changed name to reflect temporary claim
 }
 
 export interface PlayerState {
@@ -17,7 +17,7 @@ export interface PlayerState {
 }
 
 export interface GameState {
-  equations: Equation[] // Now static
+  equations: Equation[] // Static board
   diceValue: number | null
   players: Record<PlayerId, PlayerState>
   currentPlayerIndex: number
@@ -62,7 +62,7 @@ function generateEquation(id: number): Equation {
     }
 
     if (result >= 1 && result <= 10) {
-      return { id, val1, val2, operator, result, claimedBy: null }
+      return { id, val1, val2, operator, result, lastClaimedBy: null }
     }
   }
 }
@@ -124,41 +124,26 @@ Rune.initLogic({
       if (eqIndex === -1) throw Rune.invalidAction() 
 
       const eq = game.equations[eqIndex]
-      if (eq.claimedBy !== null) throw Rune.invalidAction() // Equation already claimed!
+      
+      // Equations can now be 'stolen'
+      // No check if eq.claimedBy !== null needed, as any player can claim it if they get the number.
       
       if (eq.result === game.diceValue) {
         // Correct match
         game.players[playerId].score += 1
         game.players[playerId].lastAction = 'hit'
-        eq.claimedBy = playerId // Mark equation as claimed by this player
+        eq.lastClaimedBy = playerId // Mark equation as last claimed by this player
 
-        // Check if all equations are claimed
-        const allClaimed = game.equations.every(e => e.claimedBy !== null)
-        if (allClaimed) {
-            // Game over, determine winner by score
-            let maxScore = -1
-            let potentialWinners: PlayerId[] = []
-
-            for (const p of game.playerIds) {
-                const score = game.players[p].score
-                if (score > maxScore) {
-                    maxScore = score
-                    potentialWinners = [p]
-                } else if (score === maxScore) {
-                    potentialWinners.push(p)
-                }
+        // Check Win: First player to reach 10 points wins
+        if (game.players[playerId].score >= 10) {
+          game.winner = playerId
+          Rune.gameOver({
+            players: {
+              [playerId]: "WON",
+              ...Object.fromEntries(game.playerIds.filter(p => p !== playerId).map(p => [p, "LOST"]))
             }
-
-            const gameOverPlayers: Record<PlayerId, "WON" | "LOST" | "TIE"> = {}
-            for (const p of game.playerIds) {
-                if (potentialWinners.includes(p)) {
-                    gameOverPlayers[p] = potentialWinners.length > 1 ? "TIE" : "WON"
-                } else {
-                    gameOverPlayers[p] = "LOST"
-                }
-            }
-            Rune.gameOver({ players: gameOverPlayers })
-            return
+          })
+          return
         }
 
       } else {
