@@ -8,7 +8,7 @@ export interface Equation {
   val2: number
   operator: Operator
   result: number
-  lastClaimedBy: PlayerId | null // Changed name to reflect temporary claim
+  claimedBy: PlayerId[] // List of all players who have claimed this equation
 }
 
 export interface PlayerState {
@@ -21,7 +21,7 @@ export interface GameState {
   diceValue: number | null
   players: Record<PlayerId, PlayerState>
   currentPlayerIndex: number
-  playerIds: PlayerId[]
+  playerIds: PlayerId[] // Keep track of active players in order
   phase: 'rolling' | 'claiming'
   winner: PlayerId | null
 }
@@ -62,13 +62,13 @@ function generateEquation(id: number): Equation {
     }
 
     if (result >= 1 && result <= 10) {
-      return { id, val1, val2, operator, result, lastClaimedBy: null }
+      return { id, val1, val2, operator, result, claimedBy: [] }
     }
   }
 }
 
 Rune.initLogic({
-  minPlayers: 2,
+  minPlayers: 1,
   maxPlayers: 6,
   setup: (allPlayerIds) => {
     const equations: Equation[] = []
@@ -125,16 +125,18 @@ Rune.initLogic({
 
       const eq = game.equations[eqIndex]
       
-      // Equations can now be 'stolen'
-      // No check if eq.claimedBy !== null needed, as any player can claim it if they get the number.
+      // Shared Completion:
+      // Invalid if *I* have already claimed it.
+      if (eq.claimedBy.includes(playerId)) throw Rune.invalidAction()
       
       if (eq.result === game.diceValue) {
         // Correct match
         game.players[playerId].score += 1
         game.players[playerId].lastAction = 'hit'
-        eq.lastClaimedBy = playerId // Mark equation as last claimed by this player
+        eq.claimedBy.push(playerId) // Append player to the list of claimers
 
-        // Check Win: First player to reach 10 points wins
+        // Check Win: First player to reach 10 points wins (meaning they claimed all 10 unique equations)
+        // Since we prevent double claiming, score 10 = all 10 equations.
         if (game.players[playerId].score >= 10) {
           game.winner = playerId
           Rune.gameOver({
@@ -151,10 +153,41 @@ Rune.initLogic({
         game.players[playerId].lastAction = 'miss'
       }
 
-      // Next turn (whether hit or miss)
+      // Next turn
       game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.playerIds.length
       game.diceValue = null
       game.phase = 'rolling'
+    },
+  },
+  events: {
+    playerJoined: (playerId, { game }) => {
+      if (!game.players[playerId]) {
+        game.players[playerId] = { score: 0 };
+      }
+      if (!game.playerIds.includes(playerId)) {
+        game.playerIds.push(playerId);
+      }
+    },
+    playerLeft: (playerId, { game }) => {
+      const index = game.playerIds.indexOf(playerId);
+      if (index !== -1) {
+        game.playerIds.splice(index, 1);
+        if (game.playerIds.length > 0) {
+          game.currentPlayerIndex = game.currentPlayerIndex % game.playerIds.length;
+        } else {
+          game.currentPlayerIndex = 0; 
+        }
+      }
+
+      // Remove player from all claimed lists
+      game.equations.forEach(eq => {
+        const pIdx = eq.claimedBy.indexOf(playerId)
+        if (pIdx !== -1) {
+          eq.claimedBy.splice(pIdx, 1)
+        }
+      });
+
+      delete game.players[playerId];
     },
   },
 })

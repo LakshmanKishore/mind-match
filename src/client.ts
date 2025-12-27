@@ -47,7 +47,6 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = currentPlayer === yourPlayerId
   const phase = game.phase
 
-  // Dice Visual
   if (currentVal !== null) {
     diceEl.textContent = currentVal.toString()
     diceEl.classList.add("active")
@@ -56,19 +55,16 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
     diceEl.classList.remove("active")
   }
   
-  // Dice Animation
   if (currentVal !== lastDiceVal && currentVal !== null) {
     diceEl.classList.remove("pop")
-    void diceEl.offsetWidth // Trigger reflow
+    void diceEl.offsetWidth 
     diceEl.classList.add("pop")
   }
   lastDiceVal = currentVal
 
-  // Status Text
-  // No simplified game over message here, Rune handles the full screen
   if (phase === 'rolling') {
     statusEl.textContent = isMyTurn ? "Tap Roll to start your turn" : `${getPlayerName(currentPlayer)} is rolling...`
-  } else { // claiming phase
+  } else { 
     statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal} or Pass` : `${getPlayerName(currentPlayer)} is choosing...`
   }
 }
@@ -83,30 +79,37 @@ function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
     const card = document.createElement("div")
     card.className = "equation-card"
     
+    // Core math text
     let cardContent = `<span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>`
 
-    // Always display avatar if lastClaimedBy is set
-    if (eq.lastClaimedBy !== null) {
-      const playerInfo = Rune.getPlayerInfo(eq.lastClaimedBy)
-      cardContent += `<img src="${playerInfo.avatarUrl}" class="claimed-by-avatar" alt="${playerInfo.displayName}"/>`
-      
-      // Make it dull ONLY if *this* player (yourPlayerId) is the one who last claimed it
-      if (eq.lastClaimedBy === yourPlayerId) {
-        card.classList.add("claimed-by-me") // New class for player's own claimed equations
-      } else {
-        card.classList.add("claimed-by-other") // New class for other players' claimed equations
-      }
-    }
+    // Avatar container
+    cardContent += `<div class="avatars-container">`
+    eq.claimedBy.forEach(pid => {
+      const pInfo = Rune.getPlayerInfo(pid)
+      cardContent += `<img src="${pInfo.avatarUrl}" class="mini-avatar" alt="${pInfo.displayName}"/>`
+    })
+    cardContent += `</div>`
 
-    // Equations are always interactive if it's your turn and claiming phase, regardless of who (if anyone) claimed it last.
-    if (isMyTurn && isClaiming) {
-      card.classList.add("interactive")
-      card.onclick = () => {
-        Rune.actions.claimEquation(eq.id)
-      }
+    // State Logic
+    const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
+    
+    if (iHaveClaimed) {
+      // If I claimed it, it's done/dull for me.
+      card.classList.add("claimed-by-me")
+      // Not interactive for me anymore.
+      card.classList.add("claimed-disabled") 
     } else {
-      // If not my turn or not claiming phase, it's not interactive
-      // No explicit 'disabled' class needed for visual dullness if unclaimed
+      // I haven't claimed it. 
+      // It is interactive IF it's my turn AND claiming phase.
+      if (isMyTurn && isClaiming) {
+        card.classList.add("interactive")
+        card.onclick = () => {
+          Rune.actions.claimEquation(eq.id)
+        }
+      } else {
+        // Not my turn, but I haven't claimed it. It stays bright (not dull).
+        card.classList.add("not-interactive")
+      }
     }
 
     card.innerHTML = cardContent
@@ -135,7 +138,7 @@ function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
         <img src="${info.avatarUrl}" />
         ${statusBadge}
       </div>
-      <div class="p-score">${pState.score}</div>
+      <div class="p-score">${pState.score} / 10</div>
     `
     
     playersEl.appendChild(seat)
