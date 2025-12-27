@@ -33,6 +33,7 @@ const rollBtn = document.getElementById("rollBtn")!
 
 // State for animations
 let lastDiceVal: number | null = null
+let rollAnimationId: any = null
 
 function getPlayerName(playerId: PlayerId) {
   const p = Rune.getPlayerInfo(playerId)
@@ -47,24 +48,60 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = currentPlayer === yourPlayerId
   const phase = game.phase
 
+  // Dice Visual Logic
   if (currentVal !== null) {
-    diceEl.textContent = currentVal.toString()
-    diceEl.classList.add("active")
+    if (currentVal !== lastDiceVal) {
+      // New value detected: Trigger Roll Animation
+      if (rollAnimationId) clearInterval(rollAnimationId)
+      
+      diceEl.classList.add("active")
+      let steps = 0
+      
+      rollAnimationId = setInterval(() => {
+        steps++
+        // Show random number between 1 and 10
+        diceEl.textContent = (Math.floor(Math.random() * 10) + 1).toString()
+        
+        // End animation after ~600ms (12 steps * 50ms)
+        if (steps >= 12) {
+          clearInterval(rollAnimationId)
+          rollAnimationId = null
+          
+          // Set final actual value
+          diceEl.textContent = currentVal.toString()
+          
+          // Pop effect on land
+          diceEl.classList.remove("pop")
+          void diceEl.offsetWidth // Trigger reflow
+          diceEl.classList.add("pop")
+        }
+      }, 50)
+      
+    } else if (!rollAnimationId) {
+      // No change and no active animation: Ensure static state is correct
+      // (Handles re-renders during static state)
+      diceEl.textContent = currentVal.toString()
+      diceEl.classList.add("active")
+    }
   } else {
+    // Reset state
+    if (rollAnimationId) {
+        clearInterval(rollAnimationId)
+        rollAnimationId = null
+    }
     diceEl.textContent = "?"
     diceEl.classList.remove("active")
+    diceEl.classList.remove("pop")
   }
   
-  if (currentVal !== lastDiceVal && currentVal !== null) {
-    diceEl.classList.remove("pop")
-    void diceEl.offsetWidth 
-    diceEl.classList.add("pop")
-  }
   lastDiceVal = currentVal
 
+  // Status Text
   if (phase === 'rolling') {
     statusEl.textContent = isMyTurn ? "Tap Roll to start your turn" : `${getPlayerName(currentPlayer)} is rolling...`
   } else { 
+    // If rolling animation is active, maybe say "Rolling..."? 
+    // But keeping it simple for now, status updates immediately.
     statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal} or Pass` : `${getPlayerName(currentPlayer)} is choosing...`
   }
 }
@@ -94,20 +131,15 @@ function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
     const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
     
     if (iHaveClaimed) {
-      // If I claimed it, it's done/dull for me.
       card.classList.add("claimed-by-me")
-      // Not interactive for me anymore.
       card.classList.add("claimed-disabled") 
     } else {
-      // I haven't claimed it. 
-      // It is interactive IF it's my turn AND claiming phase.
       if (isMyTurn && isClaiming) {
         card.classList.add("interactive")
         card.onclick = () => {
           Rune.actions.claimEquation(eq.id)
         }
       } else {
-        // Not my turn, but I haven't claimed it. It stays bright (not dull).
         card.classList.add("not-interactive")
       }
     }
