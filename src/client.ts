@@ -1,11 +1,12 @@
 import "./styles.css"
 import { PlayerId } from "rune-sdk"
-import { GameState, Equation } from "./logic.ts"
+import { GameState } from "./logic.ts"
 
 // Initialize DOM Structure
 const root = document.querySelector("main") || document.body
 root.innerHTML = `
   <div id="game-container">
+    <button id="theme-toggle" aria-label="Toggle Dark Mode">🌙</button>
     <header id="header">
       <div id="dice-display">?</div>
       <div id="status-text">Waiting...</div>
@@ -30,15 +31,24 @@ const boardEl = document.getElementById("board-area")!
 const playersEl = document.getElementById("players-row")!
 const passBtn = document.getElementById("passBtn")!
 const rollBtn = document.getElementById("rollBtn")!
+const themeToggle = document.getElementById("theme-toggle")!
 
 // State for animations
 let lastDiceVal: number | null = null
-let rollAnimationId: any = null
+let rollAnimationId: number | null = null
 
 function getPlayerName(playerId: PlayerId) {
   const p = Rune.getPlayerInfo(playerId)
   return p.displayName || "Player"
 }
+
+// ---------------- THEME LOGIC ----------------
+let isDarkMode = false
+themeToggle.addEventListener("click", () => {
+  isDarkMode = !isDarkMode
+  document.body.classList.toggle("dark-mode", isDarkMode)
+  themeToggle.textContent = isDarkMode ? "☀️" : "🌙"
+})
 
 // ---------------- RENDERERS ----------------
 
@@ -53,30 +63,30 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
     if (currentVal !== lastDiceVal) {
       // New value detected: Trigger Roll Animation
       if (rollAnimationId) clearInterval(rollAnimationId)
-      
+
       diceEl.classList.add("active")
       let steps = 0
-      
-      rollAnimationId = setInterval(() => {
+
+      // Use window.setInterval to explicitly use the browser version returning number
+      rollAnimationId = window.setInterval(() => {
         steps++
         // Show random number between 1 and 10
         diceEl.textContent = (Math.floor(Math.random() * 10) + 1).toString()
-        
+
         // End animation after ~600ms (12 steps * 50ms)
         if (steps >= 12) {
-          clearInterval(rollAnimationId)
+          if (rollAnimationId) clearInterval(rollAnimationId)
           rollAnimationId = null
-          
+
           // Set final actual value
           diceEl.textContent = currentVal.toString()
-          
+
           // Pop effect on land
           diceEl.classList.remove("pop")
           void diceEl.offsetWidth // Trigger reflow
           diceEl.classList.add("pop")
         }
       }, 50)
-      
     } else if (!rollAnimationId) {
       // No change and no active animation: Ensure static state is correct
       // (Handles re-renders during static state)
@@ -86,42 +96,46 @@ function renderHeader(game: GameState, yourPlayerId: PlayerId | undefined) {
   } else {
     // Reset state
     if (rollAnimationId) {
-        clearInterval(rollAnimationId)
-        rollAnimationId = null
+      clearInterval(rollAnimationId)
+      rollAnimationId = null
     }
     diceEl.textContent = "?"
     diceEl.classList.remove("active")
     diceEl.classList.remove("pop")
   }
-  
+
   lastDiceVal = currentVal
 
   // Status Text
-  if (phase === 'rolling') {
-    statusEl.textContent = isMyTurn ? "Tap Roll to start your turn" : `${getPlayerName(currentPlayer)} is rolling...`
-  } else { 
-    // If rolling animation is active, maybe say "Rolling..."? 
+  if (phase === "rolling") {
+    statusEl.textContent = isMyTurn
+      ? "Tap Roll to start your turn"
+      : `${getPlayerName(currentPlayer)} is rolling...`
+  } else {
+    // If rolling animation is active, maybe say "Rolling..."?
     // But keeping it simple for now, status updates immediately.
-    statusEl.textContent = isMyTurn ? `Select an equation for ${currentVal} or Pass` : `${getPlayerName(currentPlayer)} is choosing...`
+    statusEl.textContent = isMyTurn
+      ? `Select an equation for ${currentVal} or Pass`
+      : `${getPlayerName(currentPlayer)} is choosing...`
   }
 }
 
 function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
-  const isClaiming = game.phase === 'claiming'
-  
-  boardEl.innerHTML = ''
-  
-  game.equations.forEach(eq => {
+  const isClaiming = game.phase === "claiming"
+
+  boardEl.innerHTML = ""
+
+  game.equations.forEach((eq) => {
     const card = document.createElement("div")
     card.className = "equation-card"
-    
+
     // Core math text
     let cardContent = `<span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>`
 
     // Avatar container
     cardContent += `<div class="avatars-container">`
-    eq.claimedBy.forEach(pid => {
+    eq.claimedBy.forEach((pid) => {
       const pInfo = Rune.getPlayerInfo(pid)
       cardContent += `<img src="${pInfo.avatarUrl}" class="mini-avatar" alt="${pInfo.displayName}"/>`
     })
@@ -129,10 +143,10 @@ function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
 
     // State Logic
     const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
-    
+
     if (iHaveClaimed) {
       card.classList.add("claimed-by-me")
-      card.classList.add("claimed-disabled") 
+      card.classList.add("claimed-disabled")
     } else {
       if (isMyTurn && isClaiming) {
         card.classList.add("interactive")
@@ -149,22 +163,25 @@ function renderBoard(game: GameState, yourPlayerId: PlayerId | undefined) {
   })
 }
 
-function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
-  playersEl.innerHTML = ''
-  
-  game.playerIds.forEach(pid => {
+function renderPlayers(game: GameState) {
+  playersEl.innerHTML = ""
+
+  game.playerIds.forEach((pid) => {
     const isTurn = game.playerIds[game.currentPlayerIndex] === pid
     const pState = game.players[pid]
     const info = Rune.getPlayerInfo(pid)
-    
+
     const seat = document.createElement("div")
-    seat.className = `player-seat ${isTurn ? 'turn-active' : ''}`
-    
-    let statusBadge = ''
-    if (pState.lastAction === 'hit') statusBadge = '<span class="badge hit">✓</span>'
-    else if (pState.lastAction === 'miss') statusBadge = '<span class="badge miss">✗</span>'
-    else if (pState.lastAction === 'pass') statusBadge = '<span class="badge pass">−</span>'
-    
+    seat.className = `player-seat ${isTurn ? "turn-active" : ""}`
+
+    let statusBadge = ""
+    if (pState.lastAction === "hit")
+      statusBadge = '<span class="badge hit">✓</span>'
+    else if (pState.lastAction === "miss")
+      statusBadge = '<span class="badge miss">✗</span>'
+    else if (pState.lastAction === "pass")
+      statusBadge = '<span class="badge pass">−</span>'
+
     seat.innerHTML = `
       <div class="avatar-wrapper">
         <img src="${info.avatarUrl}" />
@@ -172,7 +189,7 @@ function renderPlayers(game: GameState, yourPlayerId: PlayerId | undefined) {
       </div>
       <div class="p-score">${pState.score} / 10</div>
     `
-    
+
     playersEl.appendChild(seat)
   })
 }
@@ -181,14 +198,14 @@ function renderControls(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
   const phase = game.phase
 
-  rollBtn.style.display = 'none'
-  passBtn.style.display = 'none'
+  rollBtn.style.display = "none"
+  passBtn.style.display = "none"
 
   if (isMyTurn && !game.winner) {
-    if (phase === 'rolling') {
-      rollBtn.style.display = 'block'
-    } else if (phase === 'claiming') {
-      passBtn.style.display = 'block'
+    if (phase === "rolling") {
+      rollBtn.style.display = "block"
+    } else if (phase === "claiming") {
+      passBtn.style.display = "block"
     }
   }
 }
@@ -202,7 +219,7 @@ Rune.initClient({
   onChange: ({ game, yourPlayerId }) => {
     renderHeader(game, yourPlayerId)
     renderBoard(game, yourPlayerId)
-    renderPlayers(game, yourPlayerId)
+    renderPlayers(game)
     renderControls(game, yourPlayerId)
   },
 })

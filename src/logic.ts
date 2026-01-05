@@ -1,6 +1,6 @@
 import type { PlayerId, RuneClient } from "rune-sdk"
 
-export type Operator = '+' | '−' | '×' | '÷'
+export type Operator = "+" | "−" | "×" | "÷"
 
 export interface Equation {
   id: number
@@ -13,7 +13,7 @@ export interface Equation {
 
 export interface PlayerState {
   score: number
-  lastAction?: 'hit' | 'miss' | 'pass'
+  lastAction?: "hit" | "miss" | "pass"
 }
 
 export interface GameState {
@@ -22,7 +22,7 @@ export interface GameState {
   players: Record<PlayerId, PlayerState>
   currentPlayerIndex: number
   playerIds: PlayerId[] // Keep track of active players in order
-  phase: 'rolling' | 'claiming'
+  phase: "rolling" | "claiming"
   winner: PlayerId | null
 }
 
@@ -40,22 +40,24 @@ declare global {
 function generateEquation(id: number): Equation {
   while (true) {
     const operatorIdx = Math.floor(Math.random() * 4)
-    const operator = ['+', '−', '×', '÷'][operatorIdx] as Operator
-    let val1 = 0, val2 = 0, result = 0
+    const operator = ["+", "−", "×", "÷"][operatorIdx] as Operator
+    let val1 = 0,
+      val2 = 0,
+      result = 0
 
-    if (operator === '+') {
+    if (operator === "+") {
       val1 = Math.floor(Math.random() * 9) + 1
       val2 = Math.floor(Math.random() * (10 - val1)) + 1
       result = val1 + val2
-    } else if (operator === '−') {
+    } else if (operator === "−") {
       val1 = Math.floor(Math.random() * 10) + 2
       val2 = Math.floor(Math.random() * (val1 - 1)) + 1
       result = val1 - val2
-    } else if (operator === '×') {
+    } else if (operator === "×") {
       val1 = Math.floor(Math.random() * 5) + 1
       val2 = Math.floor(Math.random() * 5) + 1
       result = val1 * val2
-    } else if (operator === '÷') {
+    } else if (operator === "÷") {
       val2 = Math.floor(Math.random() * 5) + 1
       result = Math.floor(Math.random() * 10) + 1
       val1 = result * val2
@@ -87,52 +89,56 @@ Rune.initLogic({
       players,
       currentPlayerIndex: 0,
       playerIds: allPlayerIds,
-      phase: 'rolling',
+      phase: "rolling",
       winner: null,
     }
   },
   actions: {
     rollDice: (_, { game, playerId }) => {
       if (game.winner) return
-      if (game.playerIds[game.currentPlayerIndex] !== playerId) throw Rune.invalidAction()
-      if (game.phase !== 'rolling') throw Rune.invalidAction()
+      if (game.playerIds[game.currentPlayerIndex] !== playerId)
+        throw Rune.invalidAction()
+      if (game.phase !== "rolling") throw Rune.invalidAction()
 
       game.diceValue = Math.floor(Math.random() * 10) + 1
-      game.phase = 'claiming'
-      
-      Object.values(game.players).forEach(p => delete p.lastAction)
+      game.phase = "claiming"
+
+      Object.values(game.players).forEach((p) => delete p.lastAction)
     },
-    
+
     pass: (_, { game, playerId }) => {
       if (game.winner) return
-      if (game.playerIds[game.currentPlayerIndex] !== playerId) throw Rune.invalidAction()
-      if (game.phase !== 'claiming') throw Rune.invalidAction()
-      
-      game.players[playerId].lastAction = 'pass'
-      
-      game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.playerIds.length
+      if (game.playerIds[game.currentPlayerIndex] !== playerId)
+        throw Rune.invalidAction()
+      if (game.phase !== "claiming") throw Rune.invalidAction()
+
+      game.players[playerId].lastAction = "pass"
+
+      game.currentPlayerIndex =
+        (game.currentPlayerIndex + 1) % game.playerIds.length
       game.diceValue = null
-      game.phase = 'rolling'
+      game.phase = "rolling"
     },
 
     claimEquation: (equationId, { game, playerId }) => {
       if (game.winner) return
-      if (game.playerIds[game.currentPlayerIndex] !== playerId) throw Rune.invalidAction()
-      if (game.phase !== 'claiming') throw Rune.invalidAction()
+      if (game.playerIds[game.currentPlayerIndex] !== playerId)
+        throw Rune.invalidAction()
+      if (game.phase !== "claiming") throw Rune.invalidAction()
 
-      const eqIndex = game.equations.findIndex(e => e.id === equationId)
-      if (eqIndex === -1) throw Rune.invalidAction() 
+      const eqIndex = game.equations.findIndex((e) => e.id === equationId)
+      if (eqIndex === -1) throw Rune.invalidAction()
 
       const eq = game.equations[eqIndex]
-      
+
       // Shared Completion:
       // Invalid if *I* have already claimed it.
       if (eq.claimedBy.includes(playerId)) throw Rune.invalidAction()
-      
+
       if (eq.result === game.diceValue) {
         // Correct match
         game.players[playerId].score += 1
-        game.players[playerId].lastAction = 'hit'
+        game.players[playerId].lastAction = "hit"
         eq.claimedBy.push(playerId) // Append player to the list of claimers
 
         // Check Win: First player to reach 10 points wins (meaning they claimed all 10 unique equations)
@@ -142,52 +148,57 @@ Rune.initLogic({
           Rune.gameOver({
             players: {
               [playerId]: "WON",
-              ...Object.fromEntries(game.playerIds.filter(p => p !== playerId).map(p => [p, "LOST"]))
-            }
+              ...Object.fromEntries(
+                game.playerIds
+                  .filter((p) => p !== playerId)
+                  .map((p) => [p, "LOST"])
+              ),
+            },
           })
           return
         }
-
       } else {
         // Wrong match
-        game.players[playerId].lastAction = 'miss'
+        game.players[playerId].lastAction = "miss"
       }
 
       // Next turn
-      game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.playerIds.length
+      game.currentPlayerIndex =
+        (game.currentPlayerIndex + 1) % game.playerIds.length
       game.diceValue = null
-      game.phase = 'rolling'
+      game.phase = "rolling"
     },
   },
   events: {
     playerJoined: (playerId, { game }) => {
       if (!game.players[playerId]) {
-        game.players[playerId] = { score: 0 };
+        game.players[playerId] = { score: 0 }
       }
       if (!game.playerIds.includes(playerId)) {
-        game.playerIds.push(playerId);
+        game.playerIds.push(playerId)
       }
     },
     playerLeft: (playerId, { game }) => {
-      const index = game.playerIds.indexOf(playerId);
+      const index = game.playerIds.indexOf(playerId)
       if (index !== -1) {
-        game.playerIds.splice(index, 1);
+        game.playerIds.splice(index, 1)
         if (game.playerIds.length > 0) {
-          game.currentPlayerIndex = game.currentPlayerIndex % game.playerIds.length;
+          game.currentPlayerIndex =
+            game.currentPlayerIndex % game.playerIds.length
         } else {
-          game.currentPlayerIndex = 0; 
+          game.currentPlayerIndex = 0
         }
       }
 
       // Remove player from all claimed lists
-      game.equations.forEach(eq => {
+      game.equations.forEach((eq) => {
         const pIdx = eq.claimedBy.indexOf(playerId)
         if (pIdx !== -1) {
           eq.claimedBy.splice(pIdx, 1)
         }
-      });
+      })
 
-      delete game.players[playerId];
+      delete game.players[playerId]
     },
   },
 })
