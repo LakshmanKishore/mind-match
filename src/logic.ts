@@ -98,12 +98,19 @@ function generateEquation(id: number): Equation {
 
 function generateFloatingEntity(id: number): FloatingEntity {
   const eq = generateEquation(id)
+  let vx = (Math.random() - 0.5) * 0.7 // Moderate initial speed
+  let vy = (Math.random() - 0.5) * 0.7
+  // Ensure minimum speed
+  if (Math.abs(vx) < 0.15) vx = vx < 0 ? -0.15 : 0.15 // Lower minimum speed
+  if (Math.abs(vy) < 0.15) vy = vy < 0 ? -0.15 : 0.15
+
   return {
     ...eq,
-    x: Math.random() * 80 + 10,
-    y: Math.random() * 80 + 10,
-    vx: (Math.random() - 0.5) * 0.5, 
-    vy: (Math.random() - 0.5) * 0.5
+    // Spawn near center (40-60%) so they spread out from the middle
+    x: 40 + Math.random() * 20, 
+    y: 40 + Math.random() * 20,
+    vx,
+    vy
   }
 }
 
@@ -224,12 +231,11 @@ Rune.initLogic({
       // --- Claim Logic ---
       if (game.diceValue !== null && eq.result === game.diceValue) {
         // HIT
-        eq.claimedBy.push(playerId)
+        eq.claimedBy.push(playerId) 
         game.players[playerId].score += 1
         game.players[playerId].lastAction = "hit"
         
         if (game.screen === "bingo") {
-           // Turn End
            game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.playerIds.length
            game.diceValue = null
            // Win Check: Must claim ALL equations (clear the board)
@@ -237,7 +243,6 @@ Rune.initLogic({
                declareWinner(game, playerId)
            }
         } else if (game.screen === "capture") {
-           // Win Check: Board Full
            const allClaimed = game.equations.every(e => e.claimedBy.length > 0)
            if (allClaimed) {
              let maxScore = -1
@@ -255,7 +260,6 @@ Rune.initLogic({
          // MISS
          game.players[playerId].lastAction = "miss"
          if (game.screen === "bingo") {
-            // Turn End on Miss too
             game.currentPlayerIndex = (game.currentPlayerIndex + 1) % game.playerIds.length
             game.diceValue = null
          }
@@ -328,8 +332,11 @@ Rune.initLogic({
 
           if (dist < minDist) {
             const tempVx = ent.vx, tempVy = ent.vy
-            ent.vx = other.vx; ent.vy = other.vy
-            other.vx = tempVx; other.vy = tempVy
+            // Elastic collision (swap velocities)
+            ent.vx = other.vx 
+            ent.vy = other.vy
+            other.vx = tempVx 
+            other.vy = tempVy
             
             const angle = Math.atan2(dy, dx)
             const overlap = minDist - dist
