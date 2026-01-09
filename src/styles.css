@@ -75,12 +75,13 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  height: 100%;
+  min-height: 100%;
   padding: 32px;
-  gap: 20px;
-  overflow-y: auto;
+  gap: 25px; 
 }
 
-.menu-screen h1 { font-size: 2rem; color: var(--primary); margin-bottom: 20px; }
+.menu-screen h1 { font-size: 2rem; color: var(--primary); margin-bottom: 0px; }
 .menu-btn {
   width: 100%; max-width: 260px; padding: 14px;
   font-size: 1.1rem; font-weight: 600; color: white;
@@ -99,6 +100,23 @@ main {
   background: var(--bg-app);
   z-index: 10;
   min-height: 70px; /* Reduced min-height */
+  position: relative; /* For timer bar positioning if needed */
+}
+
+/* --- Timer Bar (Capture Mode) --- */
+.timer-bar-container {
+  width: 100%;
+  height: 4px;
+  background-color: rgba(0,0,0,0.1);
+  margin-top: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.timer-bar {
+  height: 100%;
+  background-color: var(--accent-warn);
+  width: 100%;
+  transform-origin: left;
 }
 
 .game-footer {
@@ -255,3 +273,93 @@ body.dark-mode .floating-entity {
 body.dark-mode .menu-btn { color: #121212; }
 body.dark-mode .action-btn.primary { color: #121212; }
 body.dark-mode .action-btn.secondary { background: #333; }
+
+/* --- Sum Grid Styles --- */
+.layout-sum-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sum-grid-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+  gap: 2px;
+  width: 100%;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.sg-cell {
+  background: var(--bg-card);
+  border-radius: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.1s, background-color 0.2s;
+  user-select: none;
+}
+
+.sg-cell:active { transform: scale(0.9); }
+
+.sg-cell.selected {
+  background: var(--accent-warn);
+  color: #fff;
+  transform: scale(0.95);
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.1);
+}
+
+.sg-cell.claimed {
+  background: #ddd;
+  color: transparent;
+  pointer-events: none;
+}
+
+.sg-cell.claimed-by-me {
+  background: rgba(46, 204, 113, 0.2);
+  border: 1px solid var(--accent-success);
+}
+
+.sg-val {
+  z-index: 1;
+}
+
+.sg-cell.claimed .sg-val {
+  opacity: 0.3;
+  color: var(--text-dark);
+}
+
+.sg-owner {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: center; align-items: center;
+  z-index: 2;
+}
+
+.sg-owner img {
+  width: 70%;
+  height: 70%;
+  border-radius: 50%;
+  opacity: 0.8;
+  border: 2px solid white;
+}
+
+/* Dark mode tweaks for Sum Grid */
+body.dark-mode .sg-cell {
+  background: #2a2a2a;
+  color: #ddd;
+}
+body.dark-mode .sg-cell.selected {
+  color: #121212;
+}
