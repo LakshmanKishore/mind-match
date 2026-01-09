@@ -123,6 +123,84 @@ function generateFloatingEntity(id: number): FloatingEntity {
   }
 }
 
+function generateSmartTarget(game: GameState): number {
+  // Count unclaimed
+  let unclaimedCount = 0
+  for (let i = 0; i < 100; i++) {
+    if (!game.sumGridClaimed[i]) unclaimedCount++
+  }
+
+  // If < 20 items left, FORCE a solvable target (Single or Pair)
+  if (unclaimedCount < 20) {
+    const validTargets = new Set<number>()
+
+    for (let i = 0; i < 100; i++) {
+      if (game.sumGridClaimed[i]) continue
+
+      // 1. Single value is always a valid target (user clicks 1 cell)
+      validTargets.add(game.sumGrid[i])
+
+      // 2. Adjacent Pair Sums
+      const neighbors = []
+      const x = i % 10
+      const y = Math.floor(i / 10)
+      if (x > 0) neighbors.push(i - 1)
+      if (x < 9) neighbors.push(i + 1)
+      if (y > 0) neighbors.push(i - 10)
+      if (y < 9) neighbors.push(i + 10)
+
+      for (const n of neighbors) {
+        if (!game.sumGridClaimed[n]) {
+          validTargets.add(game.sumGrid[i] + game.sumGrid[n])
+        }
+      }
+    }
+
+    if (validTargets.size > 0) {
+      const targets = Array.from(validTargets)
+      return targets[Math.floor(Math.random() * targets.length)]
+    }
+    // If somehow empty (game over?), fallback below
+  }
+
+  const forceSmart = Math.random() < 0.67
+
+  if (forceSmart) {
+    // Find all unclaimed cells
+    const unclaimed = []
+    for (let i = 0; i < 100; i++) {
+      if (!game.sumGridClaimed[i]) unclaimed.push(i)
+    }
+
+    // Shuffle to pick random start
+    for (let i = unclaimed.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[unclaimed[i], unclaimed[j]] = [unclaimed[j], unclaimed[i]]
+    }
+
+    // Find a pair
+    for (const idx of unclaimed) {
+      const neighbors = []
+      const x = idx % 10
+      const y = Math.floor(idx / 10)
+
+      if (x > 0) neighbors.push(idx - 1)
+      if (x < 9) neighbors.push(idx + 1)
+      if (y > 0) neighbors.push(idx - 10)
+      if (y < 9) neighbors.push(idx + 10)
+
+      for (const n of neighbors) {
+        if (!game.sumGridClaimed[n]) {
+          return game.sumGrid[idx] + game.sumGrid[n]
+        }
+      }
+    }
+  }
+
+  // Fallback or Random
+  return Math.floor(Math.random() * 11) + 5
+}
+
 function declareWinner(game: GameState, winnerId: PlayerId) {
   game.winner = winnerId
   const gameOverPlayers: Record<string, "WON" | "LOST"> = {}
@@ -202,7 +280,7 @@ Rune.initLogic({
         }
         game.nextSpawnAt = Rune.gameTime() + 2000
         game.diceValue = Math.floor(Math.random() * 10) + 1
-        game.nextRollAt = Rune.gameTime() + 5000
+        game.nextRollAt = Rune.gameTime() + 15000
       } else if (mode === "sumGrid") {
         // Generate 10x10 grid of numbers 1-9
         game.sumGrid = Array.from(
@@ -212,7 +290,8 @@ Rune.initLogic({
         game.sumGridClaimed = {}
         game.sumGridSelected = {}
         // Target: 5-15
-        game.sumGridTarget = Math.floor(Math.random() * 11) + 5
+        game.sumGridTarget = generateSmartTarget(game)
+        game.nextRollAt = Rune.gameTime() + 15000
       }
     },
 
@@ -362,9 +441,6 @@ Rune.initLogic({
         game.players[playerId].score += selection.length
         game.sumGridSelected[playerId] = [] // Clear
 
-        // Reroll Target
-        game.sumGridTarget = Math.floor(Math.random() * 11) + 5
-
         // Check Win
         if (Object.keys(game.sumGridClaimed).length === 100) {
           let maxScore = -1
@@ -410,6 +486,16 @@ Rune.initLogic({
       }
     }
 
+    // --- Sum Grid Auto-Roll ---
+    if (game.screen === "sumGrid" && !game.winner) {
+      if (Rune.gameTime() >= game.nextRollAt) {
+        game.sumGridTarget = generateSmartTarget(game)
+        game.nextRollAt = Rune.gameTime() + 15000
+        // Clear current selections as target changed?
+        // Let's keep them, players can adjust.
+      }
+    }
+
     // --- Floating Physics ---
     if (game.screen === "floating" && !game.winner) {
       // Spawn
@@ -425,7 +511,7 @@ Rune.initLogic({
       // Target
       if (Rune.gameTime() >= game.nextRollAt) {
         game.diceValue = Math.floor(Math.random() * 10) + 1
-        game.nextRollAt = Rune.gameTime() + 8000
+        game.nextRollAt = Rune.gameTime() + 15000
       }
       // Physics
       const entities = game.floatingEntities

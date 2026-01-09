@@ -7,6 +7,7 @@ const root = document.querySelector("main") || document.body
 let currentScreen: GameScreen | null = null
 let rollAnimationId: number | null = null
 let lastDiceVal: number | null = null
+let matrixAnimationId: number | null = null
 
 // DOM Cache for performance
 const floatingDomCache: Record<number, HTMLDivElement> = {}
@@ -49,8 +50,10 @@ function getHeaderHtml(game: GameState, yourPlayerId: PlayerId | undefined) {
     extraHtml = `<div class="timer-bar-container"><div id="timer-bar" class="timer-bar"></div></div>`
   } else if (game.screen === "floating") {
     statusText = game.diceValue ? `Pop ${diceVal}!` : "Get ready..."
+    extraHtml = `<div class="timer-bar-container"><div id="timer-bar" class="timer-bar"></div></div>`
   } else if (game.screen === "sumGrid") {
     statusText = game.sumGridTarget ? `Sum to ${diceVal}!` : "Loading..."
+    extraHtml = `<div class="timer-bar-container"><div id="timer-bar" class="timer-bar"></div></div>`
   }
 
   return `
@@ -106,7 +109,8 @@ function getPlayersHtml(game: GameState) {
 function renderMenu() {
   if (currentScreen === "menu") return // Static
   root.innerHTML = `
-    <div class="menu-screen">
+    <canvas id="matrix-bg"></canvas>
+    <div class="menu-screen" style="position: relative; z-index: 2;">
       <h1>Mind Match</h1>
       <button class="menu-btn" data-mode="bingo">Play Bingo</button>
       <button class="menu-btn" data-mode="capture">Play Capture</button>
@@ -121,6 +125,46 @@ function renderMenu() {
       )
     })
   })
+
+  // Matrix Effect
+  const canvas = document.getElementById("matrix-bg") as HTMLCanvasElement
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return
+
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
+
+  const fontSize = 14
+  const columns = canvas.width / fontSize
+  const drops: number[] = []
+  for (let x = 0; x < columns; x++) drops[x] = 1
+
+  function drawMatrix() {
+    if (!ctx) return
+    // Translucent black to show trail
+    ctx.fillStyle = "rgba(244, 245, 247, 0.1)" // Light theme bg match but transparent
+    if (document.body.classList.contains("dark-mode")) {
+      ctx.fillStyle = "rgba(18, 18, 18, 0.1)"
+    }
+
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    ctx.fillStyle = "#4e54c8" // Primary color
+    ctx.font = fontSize + "px monospace"
+
+    for (let i = 0; i < drops.length; i++) {
+      const text = Math.floor(Math.random() * 10).toString()
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize)
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0
+      }
+      drops[i]++
+    }
+    matrixAnimationId = requestAnimationFrame(drawMatrix)
+  }
+
+  drawMatrix()
 }
 
 // --- Bingo Render (Isolated) ---
@@ -316,6 +360,7 @@ function renderFloating(game: GameState, yourPlayerId: PlayerId | undefined) {
   }
 
   handleDiceAnim(game.diceValue)
+  handleTimerBar(game)
 }
 
 // --- Sum Grid Render (Isolated) ---
@@ -381,6 +426,7 @@ function renderSumGrid(game: GameState, yourPlayerId: PlayerId | undefined) {
 
   // Handle dice animation if target changes?
   handleDiceAnim(game.sumGridTarget)
+  handleTimerBar(game)
 }
 
 // --- Shared Animation Logic ---
@@ -476,6 +522,14 @@ function handleTimerBar(game: GameState) {
 Rune.initClient({
   onChange: ({ game, yourPlayerId }) => {
     if (game.screen !== currentScreen) {
+      if (matrixAnimationId) {
+        cancelAnimationFrame(matrixAnimationId)
+        matrixAnimationId = null
+      }
+      if (rollAnimationId) {
+        clearInterval(rollAnimationId)
+        rollAnimationId = null
+      }
       for (const k in floatingDomCache) delete floatingDomCache[k]
     }
 
