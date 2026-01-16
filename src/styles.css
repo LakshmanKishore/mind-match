@@ -206,7 +206,7 @@ main {
 /* --- Floating Entities --- */
 .floating-entity {
   position: absolute;
-  width: 50px; height: 50px;
+  width: 70px; height: 70px;
   background: var(--bg-card); /* Use dynamic card background */
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -373,4 +373,21 @@ body.dark-mode .sg-cell.selected {
   height: 100%;
   z-index: 1; /* Behind menu content which is z-index 2 */
   pointer-events: none;
+}
+
+/* --- Reset Button Defaults for Game Elements --- */
+button.equation-card, button.sg-cell, button.floating-entity {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: inherit;
+  line-height: inherit;
+  outline: none;
+  /* Keep display properties as defined in classes */
+}
+
+button.sg-cell {
+  border: none;
 }

@@ -10,7 +10,9 @@ let lastDiceVal: number | null = null
 let matrixAnimationId: number | null = null
 
 // DOM Cache for performance
-const floatingDomCache: Record<number, HTMLDivElement> = {}
+const floatingDomCache: Record<number, HTMLButtonElement> = {}
+// Cache for other modes to prevent full re-render
+const gridDomCache: Record<string, HTMLButtonElement> = {} // Key: id (equationId) or index (sumGrid)
 
 // --- Helpers ---
 function getPlayerName(playerId: PlayerId) {
@@ -170,6 +172,9 @@ function renderMenu() {
 // --- Bingo Render (Isolated) ---
 function renderBingo(game: GameState, yourPlayerId: PlayerId | undefined) {
   if (currentScreen !== "bingo") {
+    // Clear cache from other modes
+    for (const k in gridDomCache) delete gridDomCache[k]
+
     root.innerHTML = `
       <div class="layout-bingo">
         <div id="header-container"></div>
@@ -192,32 +197,50 @@ function renderBingo(game: GameState, yourPlayerId: PlayerId | undefined) {
   const isMyTurn = game.playerIds[game.currentPlayerIndex] === yourPlayerId
   const canClaim = game.diceValue !== null
 
-  grid.innerHTML = game.equations
-    .map((eq) => {
-      const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
-      const isDisabled = iHaveClaimed
+  // Diffing / Reconciliation Logic
+  const updatedIds = new Set<string>()
 
-      let cls = "equation-card"
-      if (iHaveClaimed) cls += " claimed-by-me"
-      if (isDisabled) cls += " claimed-disabled"
-      if (isMyTurn && canClaim && !isDisabled) cls += " interactive"
+  game.equations.forEach((eq) => {
+    const key = `eq-${eq.id}`
+    updatedIds.add(key)
 
-      return `
-      <div class="${cls}" data-id="${eq.id}">
-        <span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>
-        <div class="avatars-container">
-          ${eq.claimedBy.map((pid) => `<img src="${Rune.getPlayerInfo(pid).avatarUrl}" class="mini-avatar"/>`).join("")}
-        </div>
+    const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
+    const isDisabled = iHaveClaimed
+
+    let cls = "equation-card"
+    if (iHaveClaimed) cls += " claimed-by-me"
+    if (isDisabled) cls += " claimed-disabled"
+    if (isMyTurn && canClaim && !isDisabled) cls += " interactive"
+
+    let el = gridDomCache[key]
+    if (!el) {
+      el = document.createElement("button")
+      el.addEventListener("click", () => {
+        // Re-read fresh data-id (though it shouldn't change for same element)
+        Rune.actions.claimEquation(eq.id)
+      })
+      grid.appendChild(el)
+      gridDomCache[key] = el
+    }
+
+    // Always update attributes/content
+    el.className = cls
+    el.dataset.id = eq.id.toString()
+    el.innerHTML = `
+      <span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>
+      <div class="avatars-container">
+        ${eq.claimedBy.map((pid) => `<img src="${Rune.getPlayerInfo(pid).avatarUrl}" class="mini-avatar"/>`).join("")}
       </div>
     `
-    })
-    .join("")
-
-  grid.querySelectorAll(".interactive").forEach((el) => {
-    el.addEventListener("click", () =>
-      Rune.actions.claimEquation(parseInt((el as HTMLElement).dataset.id!))
-    )
   })
+
+  // Cleanup removed items? (Bingo equations don't get removed, but good practice)
+  for (const k in gridDomCache) {
+    if (!updatedIds.has(k)) {
+      gridDomCache[k].remove()
+      delete gridDomCache[k]
+    }
+  }
 
   const controls = document.getElementById("controls-row")!
   if (game.winner) {
@@ -248,6 +271,8 @@ function renderBingo(game: GameState, yourPlayerId: PlayerId | undefined) {
 // --- Capture Render (Isolated) ---
 function renderCapture(game: GameState, yourPlayerId: PlayerId | undefined) {
   if (currentScreen !== "capture") {
+    for (const k in gridDomCache) delete gridDomCache[k]
+
     root.innerHTML = `
       <div class="layout-capture">
         <div id="header-container"></div>
@@ -267,33 +292,48 @@ function renderCapture(game: GameState, yourPlayerId: PlayerId | undefined) {
   document.getElementById("players-container")!.innerHTML = getPlayersHtml(game)
 
   const grid = document.getElementById("grid-container")!
-  grid.innerHTML = game.equations
-    .map((eq) => {
-      const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
-      const claimedByOthers = eq.claimedBy.length > 0
-      const canClick = game.diceValue !== null && !claimedByOthers
+  const updatedIds = new Set<string>()
 
-      let cls = "equation-card"
-      if (iHaveClaimed) cls += " claimed-by-me"
-      if (claimedByOthers && !iHaveClaimed) cls += " claimed-disabled"
-      if (canClick) cls += " interactive"
+  game.equations.forEach((eq) => {
+    const key = `eq-${eq.id}`
+    updatedIds.add(key)
 
-      return `
-      <div class="${cls}" data-id="${eq.id}">
-        <span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>
-        <div class="avatars-container">
-           ${eq.claimedBy.map((pid) => `<img src="${Rune.getPlayerInfo(pid).avatarUrl}" class="mini-avatar"/>`).join("")}
-        </div>
+    const iHaveClaimed = yourPlayerId && eq.claimedBy.includes(yourPlayerId)
+    const claimedByOthers = eq.claimedBy.length > 0
+    const canClick = game.diceValue !== null && !claimedByOthers
+
+    let cls = "equation-card"
+    if (iHaveClaimed) cls += " claimed-by-me"
+    if (claimedByOthers && !iHaveClaimed) cls += " claimed-disabled"
+    if (canClick) cls += " interactive"
+
+    let el = gridDomCache[key]
+    if (!el) {
+      el = document.createElement("button")
+      el.addEventListener("click", () => {
+        Rune.actions.claimEquation(eq.id)
+      })
+      grid.appendChild(el)
+      gridDomCache[key] = el
+    }
+
+    el.className = cls
+    el.dataset.id = eq.id.toString()
+    el.innerHTML = `
+      <span class="eq-math">${eq.val1} ${eq.operator} ${eq.val2}</span>
+      <div class="avatars-container">
+         ${eq.claimedBy.map((pid) => `<img src="${Rune.getPlayerInfo(pid).avatarUrl}" class="mini-avatar"/>`).join("")}
       </div>
     `
-    })
-    .join("")
-
-  grid.querySelectorAll(".interactive").forEach((el) => {
-    el.addEventListener("click", () =>
-      Rune.actions.claimEquation(parseInt((el as HTMLElement).dataset.id!))
-    )
   })
+
+  // Cleanup
+  for (const k in gridDomCache) {
+    if (!updatedIds.has(k)) {
+      gridDomCache[k].remove()
+      delete gridDomCache[k]
+    }
+  }
 
   handleDiceAnim(game.diceValue)
   handleTimerBar(game)
@@ -338,7 +378,7 @@ function renderFloating(game: GameState, yourPlayerId: PlayerId | undefined) {
       updatedIds.add(ent.id)
       let el = floatingDomCache[ent.id]
       if (!el) {
-        el = document.createElement("div")
+        el = document.createElement("button")
         el.className = "floating-entity"
         el.innerHTML = `<span>${ent.val1} ${ent.operator} ${ent.val2}</span>`
         el.addEventListener("click", () =>
@@ -366,6 +406,8 @@ function renderFloating(game: GameState, yourPlayerId: PlayerId | undefined) {
 // --- Sum Grid Render (Isolated) ---
 function renderSumGrid(game: GameState, yourPlayerId: PlayerId | undefined) {
   if (currentScreen !== "sumGrid") {
+    for (const k in gridDomCache) delete gridDomCache[k]
+
     root.innerHTML = `
       <div class="layout-sum-grid">
         <div id="header-container"></div>
@@ -385,44 +427,55 @@ function renderSumGrid(game: GameState, yourPlayerId: PlayerId | undefined) {
   document.getElementById("players-container")!.innerHTML = getPlayersHtml(game)
 
   const grid = document.getElementById("grid-container")!
+  const updatedIds = new Set<string>()
 
   // Render 10x10 grid
-  grid.innerHTML = game.sumGrid
-    .map((val, idx) => {
-      const claimedBy = game.sumGridClaimed[idx]
-      const mySelection = yourPlayerId
-        ? game.sumGridSelected[yourPlayerId] || []
-        : []
-      const isSelected = mySelection.includes(idx)
-      const isClaimed = claimedBy !== undefined
-      const isClaimedByMe = claimedBy === yourPlayerId
+  game.sumGrid.forEach((val, idx) => {
+    const key = `sg-${idx}`
+    updatedIds.add(key)
 
-      let cls = "sg-cell"
-      if (isSelected) cls += " selected"
-      if (isClaimed) cls += " claimed"
-      if (isClaimedByMe) cls += " claimed-by-me"
+    const claimedBy = game.sumGridClaimed[idx]
+    const mySelection = yourPlayerId
+      ? game.sumGridSelected[yourPlayerId] || []
+      : []
+    const isSelected = mySelection.includes(idx)
+    const isClaimed = claimedBy !== undefined
+    const isClaimedByMe = claimedBy === yourPlayerId
 
-      // Avatar overlay if claimed
-      let content = `<span class="sg-val">${val}</span>`
-      if (isClaimed) {
-        const info = Rune.getPlayerInfo(claimedBy!)
-        content += `<div class="sg-owner"><img src="${info.avatarUrl}"/></div>`
-      }
+    let cls = "sg-cell"
+    if (isSelected) cls += " selected"
+    if (isClaimed) cls += " claimed"
+    if (isClaimedByMe) cls += " claimed-by-me"
 
-      return `
-      <div class="${cls}" data-idx="${idx}">
-        ${content}
-      </div>
-    `
-    })
-    .join("")
+    // Avatar overlay if claimed
+    let content = `<span class="sg-val">${val}</span>`
+    if (isClaimed) {
+      const info = Rune.getPlayerInfo(claimedBy!)
+      content += `<div class="sg-owner"><img src="${info.avatarUrl}"/></div>`
+    }
 
-  grid.querySelectorAll(".sg-cell").forEach((el) => {
-    el.addEventListener("click", () => {
-      const idx = parseInt((el as HTMLElement).dataset.idx!)
-      Rune.actions.selectSumGridCell(idx)
-    })
+    let el = gridDomCache[key]
+    if (!el) {
+      el = document.createElement("button")
+      el.addEventListener("click", () => {
+        Rune.actions.selectSumGridCell(idx)
+      })
+      grid.appendChild(el)
+      gridDomCache[key] = el
+    }
+
+    el.className = cls
+    el.dataset.idx = idx.toString()
+    el.innerHTML = content
   })
+
+  // Cleanup
+  for (const k in gridDomCache) {
+    if (!updatedIds.has(k)) {
+      gridDomCache[k].remove()
+      delete gridDomCache[k]
+    }
+  }
 
   // Handle dice animation if target changes?
   handleDiceAnim(game.sumGridTarget)
@@ -531,6 +584,7 @@ Rune.initClient({
         rollAnimationId = null
       }
       for (const k in floatingDomCache) delete floatingDomCache[k]
+      for (const k in gridDomCache) delete gridDomCache[k]
     }
 
     if (game.screen === "menu") renderMenu()

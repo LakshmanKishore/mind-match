@@ -520,10 +520,6 @@ Rune.initLogic({
         ent.x += ent.vx
         ent.y += ent.vy
 
-        // Walls
-        if (ent.x <= 5 || ent.x >= 90) ent.vx *= -1
-        if (ent.y <= 5 || ent.y >= 90) ent.vy *= -1
-
         // Collisions
         for (let j = i + 1; j < entities.length; j++) {
           const other = entities[j]
@@ -550,6 +546,23 @@ Rune.initLogic({
             other.x -= pushX
             other.y -= pushY
           }
+        }
+
+        // Walls (Clamped)
+        if (ent.x <= 5) {
+          ent.x = 5
+          if (ent.vx < 0) ent.vx *= -1
+        } else if (ent.x >= 90) {
+          ent.x = 90
+          if (ent.vx > 0) ent.vx *= -1
+        }
+
+        if (ent.y <= 5) {
+          ent.y = 5
+          if (ent.vy < 0) ent.vy *= -1
+        } else if (ent.y >= 90) {
+          ent.y = 90
+          if (ent.vy > 0) ent.vy *= -1
         }
       }
     }
